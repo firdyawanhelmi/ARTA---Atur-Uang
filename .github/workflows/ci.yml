@@ -102,8 +102,8 @@ jobs:
           DB_PASSWORD: root
         run: php artisan test
 
-  mobile:
-    name: Mobile (Expo SDK 57)
+  mobile-quality:
+    name: Mobile Quality Checks (Expo SDK 57)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -128,10 +128,27 @@ jobs:
         run: npm test -- --runInBand
       - name: Expo dependency check
         run: npx expo install --check
+
+  mobile-audit:
+    name: Mobile Security Audit (npm)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ARTA-BARU/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ARTA-BARU/mobile/package-lock.json
+      - name: Install dependencies
+        run: npm ci
       - name: Dependency audit (npm)
         # T2.4: fail on moderate-or-worse advisories. Recorded 14 Okt 2026:
         # the current tree reports 64 transitive advisories (15 moderate,
         # 49 high) — triage them in T12.3; never run `npm audit fix` just
-        # to silence this step. Runs last so quality checks above always
-        # execute and produce evidence; a finding still fails the job.
+        # to silence this step. Independent job so quality checks always
+        # execute and report; a finding still fails this job and the run.
         run: npm audit --audit-level=moderate
