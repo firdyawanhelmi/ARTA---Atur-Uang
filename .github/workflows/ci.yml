@@ -1,0 +1,136 @@
+name: CI
+
+# Every check below fails the pipeline on failure: no `|| true`,
+# no `continue-on-error`, no skipped suites. A green run means every
+# mandatory gate actually executed and passed.
+on:
+  push:
+  pull_request:
+
+jobs:
+  secret-guard:
+    name: Secret guard (prints file names only, never values)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail on tracked secrets
+        run: |
+          set -euo pipefail
+          fail=0
+
+          # 1. Real .env files must never be tracked (.env.example is fine).
+          env_files=$(git ls-files | grep -E '(^|/)\.env($|\..*)' | grep -vE '\.env\.example$' || true)
+          if [ -n "$env_files" ]; then
+            echo "TRACKED_ENV_FILES count=$(echo "$env_files" | wc -l)"
+            echo "$env_files"
+            fail=1
+          fi
+
+          # 2. Private key blocks in tracked source (workflow files excluded
+          # so these very patterns cannot self-match).
+          key_files=$(git grep -l -E -- '-----BEGIN .*PRIVATE KEY-----' -- ':!.github/**' . || true)
+          if [ -n "$key_files" ]; then
+            echo "PRIVATE_KEY_FILES count=$(echo "$key_files" | wc -l)"
+            echo "$key_files"
+            fail=1
+          fi
+
+          # 3. APP_KEY-like tokens outside lockfiles and dependencies.
+          token_files=$(git grep -l -E -- 'base64:[A-Za-z0-9+/=]{16,}' -- ':!.github/**' ':!*.lock' ':!**/node_modules/**' ':!**/vendor/**' . || true)
+          if [ -n "$token_files" ]; then
+            echo "TOKEN_LIKE_FILES count=$(echo "$token_files" | wc -l)"
+            echo "$token_files"
+            fail=1
+          fi
+
+          if [ "$fail" -ne 0 ]; then
+            echo "Secret guard FAILED: remove secrets from tracked files."
+            exit 1
+          fi
+          echo "Secret guard passed."
+
+  backend:
+    name: Backend (Laravel 13 + MySQL 8)
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: arta_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    defaults:
+      run:
+        working-directory: ARTA-BARU/backend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP 8.5
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: ctype, curl, dom, fileinfo, filter, hash, iconv, json, libxml, mbstring, openssl, pcre, session, tokenizer, xml, zip, pdo_mysql
+          coverage: none
+      - name: Validate composer files
+        run: composer validate --strict
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+      - name: Dependency audit (Composer)
+        # T2.4: fail the pipeline on any advisory. Triage and remediation
+        # belong to T12.3; never bump versions just to silence this step.
+        run: composer audit
+      - name: Check platform requirements
+        run: composer check-platform-reqs
+      - name: Prepare test environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+      - name: Code style (Pint)
+        run: vendor/bin/pint --test
+      - name: Test suite (MySQL arta_test, never arta_local)
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: arta_test
+          DB_USERNAME: root
+          DB_PASSWORD: root
+        run: php artisan test
+
+  mobile:
+    name: Mobile (Expo SDK 57)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ARTA-BARU/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ARTA-BARU/mobile/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Dependency audit (npm)
+        # T2.4: fail on moderate-or-worse advisories. Recorded 14 Okt 2026:
+        # the current tree reports 64 transitive advisories (15 moderate,
+        # 49 high) — triage them in T12.3; never run `npm audit fix` just
+        # to silence this step.
+        run: npm audit --audit-level=moderate
+      - name: Lint
+        run: npm run lint
+      - name: Format check
+        run: npm run format
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test suite
+        run: npm test -- --runInBand
+      - name: Expo dependency check
+        run: npx expo install --check

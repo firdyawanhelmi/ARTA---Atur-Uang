@@ -1,0 +1,62 @@
+# ARTA-BARU — target implementasi baru (belum ada kode aplikasi)
+#
+# Rahasia / kredensial — jangan commit
+.env
+.env.*
+!.env.example
+*.key
+*.p8
+*.p12
+*.keystore
+*.jks
+*.mobileprovision
+*.pem
+secrets/
+credentials/
+fastlane/report.xml
+
+# Dependensi
+node_modules/
+.pnp/
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# Build / output
+dist/
+build/
+out/
+.expo/
+*.apk
+*.aab
+*.ipa
+*.xcarchive
+*.dSYM.zip
+
+# Laravel / backend
+backend/vendor/
+backend/.env
+backend/storage/*.key
+backend/storage/logs/*
+backend/bootstrap/cache/*
+
+# Database lokal / device
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+
+# OS / editor / sementara
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.log
+*.tmp
+coverage/
+
+# Bukti audit sementara (jangan commit dump besar)
+docs/audit-tmp/
