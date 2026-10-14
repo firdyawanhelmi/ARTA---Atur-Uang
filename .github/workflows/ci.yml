@@ -118,12 +118,6 @@ jobs:
           cache-dependency-path: ARTA-BARU/mobile/package-lock.json
       - name: Install dependencies
         run: npm ci
-      - name: Dependency audit (npm)
-        # T2.4: fail on moderate-or-worse advisories. Recorded 14 Okt 2026:
-        # the current tree reports 64 transitive advisories (15 moderate,
-        # 49 high) — triage them in T12.3; never run `npm audit fix` just
-        # to silence this step.
-        run: npm audit --audit-level=moderate
       - name: Lint
         run: npm run lint
       - name: Format check
@@ -134,3 +128,10 @@ jobs:
         run: npm test -- --runInBand
       - name: Expo dependency check
         run: npx expo install --check
+      - name: Dependency audit (npm)
+        # T2.4: fail on moderate-or-worse advisories. Recorded 14 Okt 2026:
+        # the current tree reports 64 transitive advisories (15 moderate,
+        # 49 high) — triage them in T12.3; never run `npm audit fix` just
+        # to silence this step. Runs last so quality checks above always
+        # execute and produce evidence; a finding still fails the job.
+        run: npm audit --audit-level=moderate
