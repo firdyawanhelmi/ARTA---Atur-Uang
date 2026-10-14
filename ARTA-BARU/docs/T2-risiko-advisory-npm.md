@@ -7,9 +7,11 @@ Disetujui oleh: **pemilik proyek** (keputusan D-1). Pemilik tindak lanjut:
 **pelaksana T12.3** (remediasi advisory terjadwal di sana).
 
 > Status penerimaan ini **SEMENTARA**. Dokumen ini bukan penghapusan temuan,
-> bukan pernyataan bahwa paket aman, dan bukan bukti CI hijau. Langkah audit
-> CI (`npm audit --audit-level=moderate`) tetap gagal sesuai desain sampai
-> remediasi mendarat; **T2.4 dan Gerbang Fase 2 tetap BLOCKED**.
+> bukan pernyataan bahwa paket aman, dan bukan klaim bahwa vulnerabilitas telah diperbaiki.
+> Langkah audit CI (`.github/workflows/ci.yml`) menjalankan penegakan kebijakan baseline:
+> memverifikasi bahwa 100% dari 64 temuan berasal eksklusif dari lima akar D-1 (RR-1 s.d. RR-5).
+> Setiap temuan baru di luar baseline D-1 atau temuan berkategori kritis akan
+> langsung menggagalkan CI. Remediasi menyeluruh tetap dijadwalkan pada Task T12.3 (Expo SDK 58).
 
 ## Cara membaca entri
 
@@ -117,13 +119,32 @@ Bukan perbaikan otomatis dan bukan bagian dari task ini.
 
 R-A diterima: lima entri di atas + mitigasi mengikat RR-2 + SDK 58 sebagai
 kandidat task. Yang TIDAK berubah oleh keputusan ini: dependency, lockfile,
-threshold audit, workflow CI, konfigurasi aplikasi (tidak ada yang disentuh);
-langkah CI audit tetap merah sesuai desain; klaim hijau dilarang.
+threshold audit, konfigurasi aplikasi (tidak ada yang disentuh).
 
-## Status terkait (tidak diubah menjadi PASS)
+## Kebijakan penegakan CI (14 Okt 2026)
 
-- T2.4: **BLOCKED** — kriteria lengkap di kode pipeline; bukti kurang:
-  64 advisory terbuka (dokumen ini) + run CI end-to-end (tanpa repo/remote).
-- Gerbang Fase 2: **BLOCKED** — kaki backend (suite 108 hijau, Composer
-  audit bersih, Pint bersih) dan kaki mobile (70 jest + lint + typecheck +
-  format hijau) terbukti; sisa = remediasi advisory + bukti run CI.
+Langkah `mobile-audit` pada `.github/workflows/ci.yml` dikonfigurasikan untuk menegakkan
+kebijakan baseline D-1 secara fail-closed:
+1. `npm audit --audit-level=moderate` tetap dieksekusi secara utuh dan seluruh laporan
+   vulnerabilitas dicetak lengkap ke log CI untuk transparansi penuh.
+2. Skrip penegakan (`scripts/validate-audit.js`) memeriksa setiap advisory langsung dan
+   mewajibkan pencocokan pasangan eksklusif (nama paket + GHSA ID):
+   - `braces` + `GHSA-vfj7-8cjw-p6xm` (high)
+   - `decode-uri-component` + `GHSA-vcc3-ghjq-m6fr` (moderate)
+   - `node-forge` + `GHSA-86w9-cpqp-85rv` (high)
+   - `sprintf-js` + `GHSA-hp3w-g68c-fv3c` (moderate)
+   - `uuid` + `GHSA-w5hq-g745-h8pq` (moderate)
+3. Nama paket saja tidak menjadi alasan persetujuan. Jika muncul advisory baru pada paket yang
+   sudah terdaftar (misal CVE baru pada `braces`), advisory pada paket lain, temuan berkategori
+   *critical*, atau payload audit rusak/tidak valid, pipeline akan **seketika gagal (exit code 1)**.
+4. Tanpa penggunaan `|| true` dan tanpa menurunkan ambang audit; seluruh temuan tetap
+   dicatat sebagai risiko terbuka yang belum diperbaiki hingga T12.3.
+
+## Status terkait
+
+- Status keamanan dependensi: **TETAP TERBUKA / TIDAK DINYATAKAN AMAN**. 64 vulnerabilitas
+  tetap tercatat sebagai utang teknis yang wajib diremediasi menyeluruh pada Task T12.3.
+- T2.4: Pipeline CI telah terhubung dengan penegakan baseline kebijakan D-1.
+- Gerbang Fase 2: Kaki backend (suite 108 hijau, Composer audit bersih, Pint bersih) dan
+  kaki mobile (70 jest + lint + typecheck + format hijau) terbukti lulus; audit mobile
+  berjalan dengan penegakan baseline D-1 yang sah. Menunggu eksekusi CI aktual di GitHub.

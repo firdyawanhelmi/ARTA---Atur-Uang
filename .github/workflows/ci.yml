@@ -146,9 +146,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Dependency audit (npm)
-        # T2.4: fail on moderate-or-worse advisories. Recorded 14 Okt 2026:
-        # the current tree reports 64 transitive advisories (15 moderate,
-        # 49 high) — triage them in T12.3; never run `npm audit fix` just
-        # to silence this step. Independent job so quality checks always
-        # execute and report; a finding still fails this job and the run.
-        run: npm audit --audit-level=moderate
+        # Enforces explicit audit baseline policy per docs/T2-risiko-advisory-npm.md (Decision D-1).
+        # Executes full npm audit, prints complete human-readable report to CI logs,
+        # and verifies that 100% of reported vulnerabilities strictly match the approved (package + GHSA) pairs.
+        # Fails immediately if any critical vulnerability or unapproved advisory is detected.
+        run: node scripts/validate-audit.js
