@@ -109,4 +109,3 @@ class ApiContractTest extends TestCase
         $this->assertStringNotContainsString('.php', $content);
     }
 }
-
