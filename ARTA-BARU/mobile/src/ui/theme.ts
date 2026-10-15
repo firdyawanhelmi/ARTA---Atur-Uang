@@ -94,4 +94,162 @@ export const commonStyles = StyleSheet.create({
     padding: 12,
     marginTop: 12,
   },
+  header: {
+    alignItems: 'center',
+    marginBottom: 16,
+    marginTop: 8,
+  },
+  logoBadge: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  logoBadgeText: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.text,
+    letterSpacing: 1.5,
+  },
+  logoTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: 2,
+    color: colors.text,
+  },
+  logoTag: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    color: colors.muted,
+    textTransform: 'uppercase',
+    marginTop: 3,
+  },
+  tabs: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    padding: 4,
+    marginVertical: 16,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  tabActive: {
+    backgroundColor: colors.background,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  tabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.muted,
+  },
+  tabTextActive: {
+    color: colors.text,
+    fontWeight: '700',
+  },
+  passwordContainer: {
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  passwordInput: {
+    paddingRight: 68,
+  },
+  passwordToggle: {
+    position: 'absolute',
+    right: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+  },
+  passwordToggleText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.muted,
+  },
+  secondaryButton: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  secondaryButtonText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  rowBetween: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  backLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  backLinkText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.muted,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 28,
+    marginBottom: 4,
+  },
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  badgeActive: {
+    backgroundColor: '#e8f5e9',
+  },
+  badgeActiveText: {
+    color: '#2e7d32',
+  },
+  badgeExpired: {
+    backgroundColor: colors.surface,
+  },
+  badgeExpiredText: {
+    color: colors.muted,
+  },
+  badgeRevoked: {
+    backgroundColor: '#ffebee',
+  },
+  badgeRevokedText: {
+    color: colors.danger,
+  },
+  badgeCurrent: {
+    backgroundColor: colors.text,
+  },
+  badgeCurrentText: {
+    color: colors.background,
+  },
+  buttonDanger: {
+    backgroundColor: colors.danger,
+  },
 });

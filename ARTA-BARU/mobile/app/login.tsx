@@ -2,22 +2,32 @@ import { useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
+  ScrollView,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { Link, router } from 'expo-router';
+import { Link, Redirect, router } from 'expo-router';
 
 import { useAuth } from '../src/auth/AuthContext';
 import { sessionErrorText } from '../src/auth/errorText';
+import { AuthHeader } from '../src/ui/AuthHeader';
+import { AuthTabs } from '../src/ui/AuthTabs';
 import { commonStyles } from '../src/ui/theme';
 
 export default function LoginScreen() {
-  const { state, signIn } = useAuth();
+  const { state, signIn, resendVerification } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendNotice, setResendNotice] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
+
+  if (state.status === 'signed-in') {
+    return <Redirect href="/home" />;
+  }
 
   async function handleSubmit() {
     if (!email.trim() || !password) {
@@ -25,6 +35,7 @@ export default function LoginScreen() {
       return;
     }
     setLocalError(null);
+    setResendNotice(null);
     setBusy(true);
     try {
       const next = await signIn({ email: email.trim(), password });
@@ -36,8 +47,32 @@ export default function LoginScreen() {
     }
   }
 
+  async function handleResendVerification() {
+    const trimmed = email.trim();
+    if (!trimmed) {
+      setLocalError(
+        'Masukkan email terlebih dahulu untuk mengirim ulang verifikasi.',
+      );
+      return;
+    }
+    setResending(true);
+    setResendNotice(null);
+    setLocalError(null);
+    try {
+      const result = await resendVerification(trimmed);
+      if (result.ok) {
+        setResendNotice(result.message);
+      } else {
+        setLocalError(
+          sessionErrorText(result.error) ?? 'Gagal mengirim ulang verifikasi.',
+        );
+      }
+    } finally {
+      setResending(false);
+    }
+  }
+
   const serverError = sessionErrorText(state.error);
-  // Surface field-level validation messages under the form when present.
   const fieldError =
     state.error?.kind === 'validation' && state.error.fields
       ? Object.entries(state.error.fields)
@@ -46,10 +81,25 @@ export default function LoginScreen() {
       : null;
 
   return (
-    <View style={commonStyles.screen}>
-      <Text style={commonStyles.title}>Masuk</Text>
+    <ScrollView
+      style={commonStyles.screen}
+      contentContainerStyle={{ paddingBottom: 40 }}
+      keyboardShouldPersistTaps="handled"
+    >
+      <AuthHeader />
+
+      <AuthTabs
+        activeTab="login"
+        onSelectTab={(tab) => {
+          if (tab === 'register') {
+            router.push('/register');
+          }
+        }}
+      />
+
+      <Text style={commonStyles.title}>Selamat datang kembali</Text>
       <Text style={commonStyles.subtitle}>
-        Masuk dengan akun ARTA yang sudah terverifikasi.
+        Masuk untuk lanjut mengelola keuanganmu.
       </Text>
 
       <Text style={commonStyles.label}>Email</Text>
@@ -61,18 +111,44 @@ export default function LoginScreen() {
         keyboardType="email-address"
         value={email}
         onChangeText={setEmail}
-        editable={!busy}
+        editable={!busy && !resending}
       />
 
       <Text style={commonStyles.label}>Kata sandi</Text>
-      <TextInput
-        style={commonStyles.input}
-        accessibilityLabel="Kata sandi"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-        editable={!busy}
-      />
+      <View style={commonStyles.passwordContainer}>
+        <TextInput
+          style={[commonStyles.input, commonStyles.passwordInput]}
+          accessibilityLabel="Kata sandi"
+          secureTextEntry={!showPassword}
+          value={password}
+          onChangeText={setPassword}
+          editable={!busy && !resending}
+        />
+        <Pressable
+          style={commonStyles.passwordToggle}
+          accessibilityRole="button"
+          accessibilityLabel={
+            showPassword ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'
+          }
+          onPress={() => setShowPassword((prev) => !prev)}
+        >
+          <Text style={commonStyles.passwordToggleText}>
+            {showPassword ? 'Sembunyikan' : 'Lihat'}
+          </Text>
+        </Pressable>
+      </View>
+
+      <View style={commonStyles.rowBetween}>
+        <View />
+        <Link href="/forgot-password" asChild>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Lupa kata sandi?"
+          >
+            <Text style={commonStyles.linkText}>Lupa kata sandi?</Text>
+          </Pressable>
+        </Link>
+      </View>
 
       {localError ? (
         <Text style={commonStyles.error} accessibilityLiveRegion="polite">
@@ -89,26 +165,49 @@ export default function LoginScreen() {
           {fieldError}
         </Text>
       ) : null}
+      {resendNotice ? (
+        <Text style={commonStyles.notice} accessibilityLiveRegion="polite">
+          {resendNotice}
+        </Text>
+      ) : null}
 
       <Pressable
-        style={[commonStyles.button, busy ? commonStyles.buttonDisabled : null]}
+        style={[
+          commonStyles.button,
+          busy || resending ? commonStyles.buttonDisabled : null,
+        ]}
         accessibilityRole="button"
         accessibilityLabel="Masuk"
-        disabled={busy}
+        disabled={busy || resending}
         onPress={handleSubmit}
       >
         {busy ? (
-          <ActivityIndicator accessibilityLabel="Memproses masuk" />
+          <ActivityIndicator
+            accessibilityLabel="Memproses masuk"
+            color={commonStyles.buttonText.color}
+          />
         ) : (
           <Text style={commonStyles.buttonText}>Masuk</Text>
         )}
       </Pressable>
 
-      <View style={commonStyles.link}>
-        <Link href="/register">
-          <Text style={commonStyles.linkText}>Belum punya akun? Daftar</Text>
-        </Link>
-      </View>
-    </View>
+      {state.error?.kind === 'invalid_credentials' ? (
+        <Pressable
+          style={commonStyles.secondaryButton}
+          accessibilityRole="button"
+          accessibilityLabel="Kirim ulang email verifikasi"
+          disabled={busy || resending}
+          onPress={handleResendVerification}
+        >
+          {resending ? (
+            <ActivityIndicator accessibilityLabel="Mengirim ulang verifikasi" />
+          ) : (
+            <Text style={commonStyles.secondaryButtonText}>
+              Belum terima verifikasi? Kirim ulang email verifikasi
+            </Text>
+          )}
+        </Pressable>
+      ) : null}
+    </ScrollView>
   );
 }

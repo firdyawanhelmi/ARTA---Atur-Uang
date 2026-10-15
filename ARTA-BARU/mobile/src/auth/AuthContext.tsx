@@ -19,12 +19,16 @@ import {
   loadDevices,
   refreshProfile,
   renameDevice,
+  requestPasswordResetFlow,
+  resendVerificationFlow,
   restoreSession,
   revokeDevice,
   signIn,
   signOut,
   signOutEverywhere,
   signUp,
+  submitPasswordResetFlow,
+  type AuthActionResult,
   type AuthState,
   type DeviceMutationResult,
   type SessionDeps,
@@ -32,6 +36,7 @@ import {
   type SignUpInput,
   type SignUpResult,
 } from './session';
+import type { ResetPasswordInput } from './authApi';
 
 export interface AuthContextValue {
   state: AuthState;
@@ -47,6 +52,9 @@ export interface AuthContextValue {
     deviceName: string,
   ) => Promise<DeviceMutationResult>;
   revokeDevice: (sessionId: number) => Promise<DeviceMutationResult>;
+  requestPasswordReset: (email: string) => Promise<AuthActionResult>;
+  submitPasswordReset: (input: ResetPasswordInput) => Promise<AuthActionResult>;
+  resendVerification: (email: string) => Promise<AuthActionResult>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -106,6 +114,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return result;
           },
         ),
+      requestPasswordReset: (email: string) =>
+        requestPasswordResetFlow(email, depsRef.current),
+      submitPasswordReset: (input: ResetPasswordInput) =>
+        submitPasswordResetFlow(input, depsRef.current),
+      resendVerification: (email: string) =>
+        resendVerificationFlow(email, depsRef.current),
     }),
     [state, update],
   );

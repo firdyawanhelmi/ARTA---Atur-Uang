@@ -49,8 +49,12 @@ import {
   performLogoutAll,
   registerAccount,
   renameDeviceSession,
+  requestPasswordReset,
+  resendEmailVerification,
   revokeDeviceSession,
+  submitPasswordReset,
   type DeviceSessionRow,
+  type ResetPasswordInput,
   type UserProfile,
 } from './authApi';
 import { deviceMetadata, getOrCreateDeviceId } from './device';
@@ -556,5 +560,52 @@ export async function revokeDevice(
         devicesError: mapRequestError(error, 'session_expired'),
       },
     };
+  }
+}
+
+export type AuthActionResult = SignUpResult;
+
+export async function requestPasswordResetFlow(
+  email: string,
+  deps?: SessionDeps,
+): Promise<AuthActionResult> {
+  try {
+    const { message } = await requestPasswordReset(email, {
+      request: deps?.request,
+    });
+    return { ok: true, message };
+  } catch (error) {
+    return { ok: false, error: mapRequestError(error, 'invalid_credentials') };
+  }
+}
+
+export async function submitPasswordResetFlow(
+  input: ResetPasswordInput,
+  deps?: SessionDeps,
+): Promise<AuthActionResult> {
+  try {
+    const { message } = await submitPasswordReset(input, {
+      request: deps?.request,
+    });
+    // Server revokes all tokens and sessions on password reset.
+    // Purge local credentials to ensure consistent offline and local state.
+    await clearAuthCredentials(deps?.store);
+    return { ok: true, message };
+  } catch (error) {
+    return { ok: false, error: mapRequestError(error, 'invalid_credentials') };
+  }
+}
+
+export async function resendVerificationFlow(
+  email: string,
+  deps?: SessionDeps,
+): Promise<AuthActionResult> {
+  try {
+    const { message } = await resendEmailVerification(email, {
+      request: deps?.request,
+    });
+    return { ok: true, message };
+  } catch (error) {
+    return { ok: false, error: mapRequestError(error, 'invalid_credentials') };
   }
 }

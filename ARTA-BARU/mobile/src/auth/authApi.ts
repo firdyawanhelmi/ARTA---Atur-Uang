@@ -323,3 +323,51 @@ export async function revokeDeviceSession(
   });
   return parseMessage(payload);
 }
+
+export async function resendEmailVerification(
+  email: string,
+  deps?: AuthApiDeps,
+): Promise<{ message: string }> {
+  const payload = await resolveRequest(deps)<unknown>({
+    method: 'POST',
+    path: '/auth/resend-verification',
+    body: { email },
+  });
+  return parseMessage(payload);
+}
+
+export async function requestPasswordReset(
+  email: string,
+  deps?: AuthApiDeps,
+): Promise<{ message: string }> {
+  const payload = await resolveRequest(deps)<unknown>({
+    method: 'POST',
+    path: '/auth/forgot-password',
+    body: { email },
+  });
+  return parseMessage(payload);
+}
+
+export interface ResetPasswordInput {
+  email: string;
+  token: string;
+  password: string;
+  passwordConfirmation: string;
+}
+
+export async function submitPasswordReset(
+  input: ResetPasswordInput,
+  deps?: AuthApiDeps,
+): Promise<{ message: string }> {
+  const payload = await resolveRequest(deps)<unknown>({
+    method: 'POST',
+    path: '/auth/reset-password',
+    body: {
+      email: input.email,
+      token: input.token,
+      password: input.password,
+      password_confirmation: input.passwordConfirmation,
+    },
+  });
+  return parseMessage(payload);
+}

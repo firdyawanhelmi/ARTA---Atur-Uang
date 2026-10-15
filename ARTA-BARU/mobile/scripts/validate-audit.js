@@ -1,14 +1,49 @@
 const { execSync } = require('child_process');
 
+const SEVERITY_LEVELS = {
+  info: 0,
+  low: 1,
+  moderate: 2,
+  high: 3,
+  critical: 4,
+};
+
 // Approved explicit (package + GHSA ID) pairs from docs/T2-risiko-advisory-npm.md (Decision D-1).
-// Each advisory MUST strictly match both the exact package name AND the approved GHSA identifier.
-const APPROVED_PACKAGE_ADVISORIES = new Set([
-  'braces:ghsa-vfj7-8cjw-p6xm', // RR-1 (high)
-  'decode-uri-component:ghsa-vcc3-ghjq-m6fr', // RR-2 (moderate)
-  'node-forge:ghsa-86w9-cpqp-85rv', // RR-3 (high)
-  'sprintf-js:ghsa-hp3w-g68c-fv3c', // RR-4 (moderate)
-  'uuid:ghsa-w5hq-g745-h8pq', // RR-5 (moderate)
-]);
+// Each advisory MUST strictly match package name, approved GHSA identifier, and maximum approved severity.
+const APPROVED_PACKAGE_ADVISORIES = {
+  'braces:ghsa-vfj7-8cjw-p6xm': {
+    package: 'braces',
+    ghsaId: 'ghsa-vfj7-8cjw-p6xm',
+    maxSeverity: 'high', // RR-1 (high) - BLOCKED upstream
+  },
+  'decode-uri-component:ghsa-vcc3-ghjq-m6fr': {
+    package: 'decode-uri-component',
+    ghsaId: 'ghsa-vcc3-ghjq-m6fr',
+    maxSeverity: 'moderate', // RR-2 (moderate) - BLOCKED by CommonJS expo-router@57
+  },
+  'node-forge:ghsa-86w9-cpqp-85rv': {
+    package: 'node-forge',
+    ghsaId: 'ghsa-86w9-cpqp-85rv',
+    maxSeverity: 'high', // RR-3 (high) - BLOCKED upstream
+  },
+};
+
+// Backward-compatible iterator and helper for existing consumers
+Object.defineProperty(APPROVED_PACKAGE_ADVISORIES, Symbol.iterator, {
+  enumerable: false,
+  value: function* () {
+    yield* Object.keys(APPROVED_PACKAGE_ADVISORIES);
+  },
+});
+Object.defineProperty(APPROVED_PACKAGE_ADVISORIES, 'has', {
+  enumerable: false,
+  value: function (key) {
+    return Object.prototype.hasOwnProperty.call(
+      APPROVED_PACKAGE_ADVISORIES,
+      key,
+    );
+  },
+});
 
 function validateAudit(auditJson) {
   if (!auditJson || typeof auditJson !== 'object') {
@@ -55,7 +90,10 @@ function validateAudit(auditJson) {
   if (meta.total === 0) {
     return {
       ok: true,
+      status: 'CLEAN',
+      isClean: true,
       total: 0,
+      totalNodes: 0,
       detectedRoots: [],
       message: 'Audit clean: 0 vulnerabilities found.',
     };
@@ -113,11 +151,29 @@ function validateAudit(auditJson) {
         detectedRoots.add(pairKey);
       }
 
-      if (!ghsaId || !APPROVED_PACKAGE_ADVISORIES.has(pairKey)) {
+      const approvedConfig = APPROVED_PACKAGE_ADVISORIES[pairKey];
+      const advSeverity = (adv.severity || 'unknown').toLowerCase();
+      const currentLevel = SEVERITY_LEVELS[advSeverity] ?? 99;
+      const maxAllowedLevel = approvedConfig
+        ? (SEVERITY_LEVELS[approvedConfig.maxSeverity] ?? -1)
+        : -1;
+
+      if (!ghsaId || !approvedConfig) {
         unapproved.push({
           package: pkgName,
           ghsaId: ghsaId,
           pairKey: pairKey,
+          reason: 'Unapproved package or GHSA identifier',
+          title: adv.title || 'Unknown title',
+          severity: adv.severity || 'unknown',
+          url: adv.url || 'No URL',
+        });
+      } else if (currentLevel > maxAllowedLevel) {
+        unapproved.push({
+          package: pkgName,
+          ghsaId: ghsaId,
+          pairKey: pairKey,
+          reason: `Severity escalated from approved maximum "${approvedConfig.maxSeverity}" to "${adv.severity}"`,
           title: adv.title || 'Unknown title',
           severity: adv.severity || 'unknown',
           url: adv.url || 'No URL',
@@ -129,7 +185,9 @@ function validateAudit(auditJson) {
   if (unapproved.length > 0) {
     return {
       ok: false,
-      error: `Unapproved security vulnerabilities detected outside Decision D-1 baseline (${unapproved.length} unapproved finding(s))`,
+      status: 'UNAPPROVED_FINDINGS',
+      isClean: false,
+      error: `Unapproved security vulnerabilities detected outside deferred findings (${unapproved.length} unapproved finding(s))`,
       unapproved,
     };
   }
@@ -137,15 +195,20 @@ function validateAudit(auditJson) {
   if (meta.total > 0 && detectedRoots.size === 0) {
     return {
       ok: false,
+      status: 'MALFORMED_PAYLOAD',
+      isClean: false,
       error: `Invalid audit payload: metadata reports ${meta.total} vulnerabilities, but no advisory roots were found in vulnerabilities map.`,
     };
   }
 
   return {
-    ok: true,
+    ok: false,
+    status: 'DEFERRED_OPEN_SECURITY_FINDINGS',
+    isClean: false,
     total: meta.total,
+    totalNodes: meta.total,
     detectedRoots: Array.from(detectedRoots),
-    message: `POLICY ENFORCED: All ${meta.total} vulnerabilities match approved temporary risk acceptance D-1 (RR-1 to RR-5 in docs/T2-risiko-advisory-npm.md). No unapproved vulnerabilities found.`,
+    message: `STATUS: DEFERRED — OPEN SECURITY FINDINGS (${detectedRoots.size} unique root advisory(ies) covering ${meta.total} affected dependency node(s)).\nRemediation is deferred to Task T12.3 (Expo SDK 58). This is open technical debt; passing build/test checks does NOT imply dependencies are safe.`,
   };
 }
 
@@ -202,20 +265,26 @@ function runAuditCli(cwd = process.cwd()) {
   }
 
   const result = validateAudit(auditJson);
-  if (!result.ok) {
-    console.error(`::error::${result.error}`);
-    if (result.unapproved) {
-      console.error(JSON.stringify(result.unapproved, null, 2));
-    }
+  if (result.status === 'CLEAN') {
+    console.log('Audit clean: 0 vulnerabilities found.');
+    process.exit(0);
+  }
+
+  if (result.status === 'DEFERRED_OPEN_SECURITY_FINDINGS') {
+    console.log(
+      `Active root advisories tracked under DEFERRED — OPEN SECURITY FINDINGS (${result.detectedRoots.length} unique root(s) across ${result.totalNodes || result.total} affected node(s)):`,
+    );
+    result.detectedRoots.forEach((r) => console.log(` - ${r}`));
+    console.log(`\n${result.message}`);
+    // Exits with code 1 so that security audit is explicitly recorded as having open findings (not masked as clean).
     process.exit(1);
   }
 
-  console.log(
-    'Root advisories verified against approved baseline (Decision D-1):',
-  );
-  result.detectedRoots.forEach((r) => console.log(` - ${r}`));
-  console.log(`\n${result.message}`);
-  process.exit(0);
+  console.error(`::error::${result.error}`);
+  if (result.unapproved) {
+    console.error(JSON.stringify(result.unapproved, null, 2));
+  }
+  process.exit(1);
 }
 
 if (require.main === module) {
@@ -224,6 +293,7 @@ if (require.main === module) {
 
 module.exports = {
   APPROVED_PACKAGE_ADVISORIES,
+  SEVERITY_LEVELS,
   validateAudit,
   runAuditCli,
 };

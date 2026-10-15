@@ -116,30 +116,30 @@ Fase ini membuktikan pilihan teknologi sebelum aplikasi besar dibangun.
 # Fase 2 — Fondasi proyek dan kualitas kode
 
 ### T2.1 — Scaffold aplikasi mobile
-- [ ] Inisialisasi React Native + TypeScript + Expo di `ARTA-BARU/`.
-- [ ] Konfigurasi navigation, environment config, lint, formatter, typecheck, dan test runner.
-- [ ] Pisahkan konfigurasi development, staging, dan production.
-- [ ] Jangan membuat produk web/PWA, Vite frontend, Service Worker, IndexedDB, atau Web Push/VAPID.
+- [x] Inisialisasi React Native + TypeScript + Expo di `ARTA-BARU/`.
+- [x] Konfigurasi navigation, environment config, lint, formatter, typecheck, dan test runner.
+- [x] Pisahkan konfigurasi development, staging, dan production.
+- [x] Jangan membuat produk web/PWA, Vite frontend, Service Worker, IndexedDB, atau Web Push/VAPID.
 
 ### T2.2 — Fondasi backend
-- [ ] Siapkan Laravel API terpisah sesuai struktur PRD.
-- [ ] Konfigurasi MySQL, migration, validation, error handling, API versioning, dan health check.
-- [ ] Siapkan queue, scheduler, dan realtime hanya setelah dependensi dan kebutuhan tiap layanan jelas.
-- [ ] Semua secret berasal dari environment/secret manager, bukan source code.
+- [x] Siapkan Laravel API terpisah sesuai struktur PRD.
+- [x] Konfigurasi MySQL, migration, validation, error handling, API versioning, dan health check.
+- [x] Siapkan queue, scheduler, dan realtime hanya setelah dependensi dan kebutuhan tiap layanan jelas.
+- [x] Semua secret berasal dari environment/secret manager, bukan source code.
 
 ### T2.3 — Kontrak API dan tipe data
-- [ ] Tetapkan format response/error, pagination, UUID, timezone, dan format nominal.
-- [ ] Gunakan integer untuk nominal uang; hindari floating-point.
-- [ ] Definisikan DTO/type bersama melalui kontrak terdokumentasi, bukan menyalin kode backend secara sembarang ke frontend.
-- [ ] Pastikan endpoint memeriksa autentikasi, otorisasi pemilik data, validasi, dan rate limit.
+- [x] Tetapkan format response/error, pagination, UUID, timezone, dan format nominal.
+- [x] Gunakan integer untuk nominal uang; hindari floating-point.
+- [x] Definisikan DTO/type bersama melalui kontrak terdokumentasi, bukan menyalin kode backend secara sembarang ke frontend.
+- [x] Pastikan endpoint memeriksa autentikasi, otorisasi pemilik data, validasi, dan rate limit.
 
 ### T2.4 — CI dan kualitas dasar
-- [ ] Tambahkan pipeline untuk lint, typecheck, test, dan pemeriksaan dependency.
-- [ ] Tambahkan pemeriksaan rahasia dan pemindaian dependency yang relevan.
-- [ ] Buat template issue/bug dan format laporan agent.
-- [ ] Pastikan build gagal jika pemeriksaan wajib gagal.
+- [x] Tambahkan pipeline untuk lint, typecheck, test, dan pemeriksaan dependency.
+- [x] Tambahkan pemeriksaan rahasia dan pemindaian dependency yang relevan.
+- [x] Buat template issue/bug dan format laporan agent.
+- [x] Pastikan build gagal jika pemeriksaan wajib gagal.
 
-**Gerbang Fase 2:** aplikasi mobile dan API punya fondasi yang bisa dibangun, diuji, dan dikonfigurasi tanpa secret tertanam.
+**Gerbang Fase 2: PASS BERSYARAT (15 Okt 2026)** — aplikasi mobile dan API punya fondasi yang bisa dibangun, diuji, dan dikonfigurasi tanpa secret tertanam. Persetujuan formal penundaan sementara audit dependensi (52 node terdampak pada 3 akar: braces, decode-uri-component, node-forge) disahkan oleh pengguna pada 15 Okt 2026 dengan status DEFERRED — OPEN SECURITY FINDINGS (bukan clean/safe); penyelesaian definitif dialokasikan ke Task T12.3.
 
 ---
 

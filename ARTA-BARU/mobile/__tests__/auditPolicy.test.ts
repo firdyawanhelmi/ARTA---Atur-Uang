@@ -4,17 +4,17 @@ import {
 } from '../scripts/validate-audit';
 
 describe('Audit Policy Validator (Decision D-1 Enforcement)', () => {
-  // Scenario 1: Lima GHSA yang sudah disetujui tetap dikenali (PASS)
-  it('Scenario 1: allows the five approved (package + GHSA) root pairs', () => {
+  // Scenario 1: Tiga GHSA yang masih aktif dikenali dengan status DEFERRED — OPEN SECURITY FINDINGS
+  it('Scenario 1: identifies the three active root pairs with DEFERRED_OPEN_SECURITY_FINDINGS status', () => {
     const payload = {
       metadata: {
         vulnerabilities: {
           info: 0,
           low: 0,
-          moderate: 15,
+          moderate: 3,
           high: 49,
           critical: 0,
-          total: 64,
+          total: 52,
         },
       },
       vulnerabilities: {
@@ -57,42 +57,73 @@ describe('Audit Policy Validator (Decision D-1 Enforcement)', () => {
             },
           ],
         },
-        'sprintf-js': {
-          name: 'sprintf-js',
-          severity: 'moderate',
-          via: [
-            {
-              source: 1241202,
-              name: 'sprintf-js',
-              title: 'sprintf-js DoS',
-              url: 'https://github.com/advisories/GHSA-hp3w-g68c-fv3c',
-              severity: 'moderate',
-            },
-          ],
-        },
-        uuid: {
-          name: 'uuid',
-          severity: 'moderate',
-          via: [
-            {
-              source: 1119441,
-              name: 'uuid',
-              title: 'uuid buffer bounds check',
-              url: 'https://github.com/advisories/GHSA-w5hq-g745-h8pq',
-              severity: 'moderate',
-            },
-          ],
-        },
       },
     };
 
     const result = validateAudit(payload);
-    expect(result.ok).toBe(true);
-    expect(result.total).toBe(64);
-    expect(result.detectedRoots).toHaveLength(5);
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe('DEFERRED_OPEN_SECURITY_FINDINGS');
+    expect(result.isClean).toBe(false);
+    expect(result.total).toBe(52);
+    expect(result.detectedRoots).toHaveLength(3);
     expect(result.detectedRoots).toEqual(
-      expect.arrayContaining(Array.from(APPROVED_PACKAGE_ADVISORIES)),
+      expect.arrayContaining(Object.keys(APPROVED_PACKAGE_ADVISORIES)),
     );
+    expect(result.message).toContain(
+      'STATUS: DEFERRED — OPEN SECURITY FINDINGS',
+    );
+  });
+
+  // Scenario 1b: Paket yang sudah diremediasi (sprintf-js dan uuid) ditolak jika muncul kembali
+  it('Scenario 1b: rejects remediated advisories (sprintf-js and uuid) if reintroduced', () => {
+    const remediatedPairs = [
+      {
+        pkg: 'sprintf-js',
+        source: 1241202,
+        title: 'sprintf-js DoS',
+        url: 'https://github.com/advisories/GHSA-hp3w-g68c-fv3c',
+        severity: 'moderate',
+      },
+      {
+        pkg: 'uuid',
+        source: 1119441,
+        title: 'uuid buffer bounds check',
+        url: 'https://github.com/advisories/GHSA-w5hq-g745-h8pq',
+        severity: 'moderate',
+      },
+    ];
+
+    for (const item of remediatedPairs) {
+      const payload = {
+        metadata: {
+          vulnerabilities: {
+            total: 1,
+            critical: 0,
+            high: 0,
+            moderate: 1,
+            low: 0,
+            info: 0,
+          },
+        },
+        vulnerabilities: {
+          [item.pkg]: {
+            name: item.pkg,
+            severity: item.severity,
+            via: [item],
+          },
+        },
+      };
+
+      const result = validateAudit(payload);
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(
+        /Unapproved security vulnerabilities detected/,
+      );
+      expect(result.unapproved).toHaveLength(1);
+      expect(result.unapproved![0]).toMatchObject({
+        package: item.pkg,
+      });
+    }
   });
 
   // Scenario 2: GHSA baru pada paket yang sudah diizinkan harus gagal (FAIL)
@@ -248,7 +279,7 @@ describe('Audit Policy Validator (Decision D-1 Enforcement)', () => {
     expect(resultAdv.error).toMatch(/Critical severity/);
   });
 
-  // Scenario 5: Audit tanpa vulnerability harus lolos (PASS)
+  // Scenario 5: Audit tanpa vulnerability harus lolos (PASS / CLEAN)
   it('Scenario 5: passes cleanly when zero vulnerabilities exist', () => {
     const payload = {
       metadata: {
@@ -266,6 +297,8 @@ describe('Audit Policy Validator (Decision D-1 Enforcement)', () => {
 
     const result = validateAudit(payload);
     expect(result.ok).toBe(true);
+    expect(result.status).toBe('CLEAN');
+    expect(result.isClean).toBe(true);
     expect(result.total).toBe(0);
     expect(result.message).toMatch(/Audit clean: 0 vulnerabilities found/);
   });
@@ -352,5 +385,134 @@ describe('Audit Policy Validator (Decision D-1 Enforcement)', () => {
     });
     expect(zeroRootsResult.ok).toBe(false);
     expect(zeroRootsResult.error).toMatch(/no advisory roots were found/);
+  });
+
+  // Scenario 7: Eskalasi severity pada advisory dengan batas Moderate (Moderate -> High) harus gagal (FAIL)
+  describe('Scenario 7: rejects severity escalation above approved maximum for Moderate advisory', () => {
+    const moderateAdvisories = [
+      {
+        pkg: 'decode-uri-component',
+        source: 1147955,
+        ghsa: 'ghsa-vcc3-ghjq-m6fr',
+        ref: 'RR-2',
+      },
+    ];
+
+    test.each(moderateAdvisories)(
+      'rejects when $pkg ($ref) escalates from moderate to high',
+      ({ pkg, source, ghsa }) => {
+        const payload = {
+          metadata: {
+            vulnerabilities: {
+              total: 1,
+              critical: 0,
+              high: 1,
+              moderate: 0,
+              low: 0,
+              info: 0,
+            },
+          },
+          vulnerabilities: {
+            [pkg]: {
+              name: pkg,
+              severity: 'high',
+              via: [
+                {
+                  source,
+                  name: pkg,
+                  title: `${pkg} escalated to high severity`,
+                  url: `https://github.com/advisories/${ghsa}`,
+                  severity: 'high',
+                },
+              ],
+            },
+          },
+        };
+
+        const result = validateAudit(payload);
+        expect(result.ok).toBe(false);
+        expect(result.error).toMatch(
+          /Unapproved security vulnerabilities detected/,
+        );
+        expect(result.unapproved).toHaveLength(1);
+        expect(result.unapproved![0]).toMatchObject({
+          package: pkg,
+          ghsaId: ghsa,
+          severity: 'high',
+        });
+        expect(result.unapproved![0].reason).toMatch(
+          /Severity escalated from approved maximum "moderate" to "high"/,
+        );
+      },
+    );
+  });
+
+  // Scenario 8: Membedakan advisory unik dari total node dan menyatakan risiko terbuka
+  it('Scenario 8: distinguishes unique root count from affected node count and states open risk', () => {
+    const payload = {
+      metadata: {
+        vulnerabilities: {
+          info: 0,
+          low: 0,
+          moderate: 3,
+          high: 49,
+          critical: 0,
+          total: 52,
+        },
+      },
+      vulnerabilities: {
+        braces: {
+          name: 'braces',
+          severity: 'high',
+          via: [
+            {
+              source: 1240992,
+              name: 'braces',
+              title: 'braces stack exhaustion',
+              url: 'https://github.com/advisories/GHSA-vfj7-8cjw-p6xm',
+              severity: 'high',
+            },
+          ],
+        },
+        'decode-uri-component': {
+          name: 'decode-uri-component',
+          severity: 'moderate',
+          via: [
+            {
+              source: 1147955,
+              name: 'decode-uri-component',
+              title: 'decode-uri-component DoS',
+              url: 'https://github.com/advisories/GHSA-vcc3-ghjq-m6fr',
+              severity: 'moderate',
+            },
+          ],
+        },
+        'node-forge': {
+          name: 'node-forge',
+          severity: 'high',
+          via: [
+            {
+              source: 1240912,
+              name: 'node-forge',
+              title: 'node-forge RSA PKCS#1 v1.5 verification',
+              url: 'https://github.com/advisories/GHSA-86w9-cpqp-85rv',
+              severity: 'high',
+            },
+          ],
+        },
+      },
+    };
+
+    const result = validateAudit(payload);
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe('DEFERRED_OPEN_SECURITY_FINDINGS');
+    expect(result.isClean).toBe(false);
+    expect(result.totalNodes).toBe(52);
+    expect(result.detectedRoots).toHaveLength(3);
+    expect(result.message).toContain('3 unique root advisory(ies)');
+    expect(result.message).toContain('52 affected dependency node(s)');
+    expect(result.message).toContain(
+      'STATUS: DEFERRED — OPEN SECURITY FINDINGS',
+    );
   });
 });

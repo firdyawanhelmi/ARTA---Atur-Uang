@@ -8,12 +8,15 @@ import {
   loadDevices,
   refreshProfile,
   renameDevice,
+  requestPasswordResetFlow,
+  resendVerificationFlow,
   restoreSession,
   revokeDevice,
   signIn,
   signOut,
   signOutEverywhere,
   signUp,
+  submitPasswordResetFlow,
   type AuthState,
   type SessionDeps,
 } from '../src/auth/session';
@@ -401,6 +404,205 @@ describe('auth session orchestration (session.ts)', () => {
     });
   });
 
+  describe('requestPasswordResetFlow', () => {
+    it('returns generic accepted message on success without leaking user existence', async () => {
+      const store = new FakeStore();
+      const { deps, calls } = depsFor(store, [
+        {
+          ok: {
+            message:
+              'If an account exists for this email, a password reset link has been sent.',
+          },
+        },
+      ]);
+
+      const result = await requestPasswordResetFlow('test@example.com', deps);
+
+      expect(result.ok).toBe(true);
+      expect(calls[0]).toMatchObject({
+        method: 'POST',
+        path: '/auth/forgot-password',
+        body: { email: 'test@example.com' },
+      });
+    });
+
+    it('surfaces network error on transport failure', async () => {
+      const store = new FakeStore();
+      const { deps } = depsFor(store, [
+        { failure: new ApiError('network', 'No connection.') },
+      ]);
+
+      const result = await requestPasswordResetFlow('test@example.com', deps);
+
+      expect(result).toEqual({
+        ok: false,
+        error: {
+          kind: 'network',
+          message: 'No connection.',
+        },
+      });
+    });
+
+    it('surfaces rate limit when throttled', async () => {
+      const store = new FakeStore();
+      const { deps } = depsFor(store, [
+        { failure: new ApiError('rate_limited', 'Too many requests.', 429) },
+      ]);
+
+      const result = await requestPasswordResetFlow('test@example.com', deps);
+
+      expect(result).toEqual({
+        ok: false,
+        error: {
+          kind: 'rate_limited',
+          message: 'Too many requests.',
+        },
+      });
+    });
+  });
+
+  describe('submitPasswordResetFlow', () => {
+    it('submits reset payload and purges any stored credentials on success', async () => {
+      const store = new FakeStore();
+      await store.seed({
+        'arta.auth.token': 'old-stale-token',
+        'arta.auth.userId': userA.id,
+      });
+      const { deps, calls } = depsFor(store, [
+        { ok: { message: 'Your password has been reset.' } },
+      ]);
+
+      const result = await submitPasswordResetFlow(
+        {
+          email: 'test@example.com',
+          token: 'secret-token-123',
+          password: 'new-password-123',
+          passwordConfirmation: 'new-password-123',
+        },
+        deps,
+      );
+
+      expect(result.ok).toBe(true);
+      expect(calls[0]).toMatchObject({
+        method: 'POST',
+        path: '/auth/reset-password',
+        body: {
+          email: 'test@example.com',
+          token: 'secret-token-123',
+          password: 'new-password-123',
+          password_confirmation: 'new-password-123',
+        },
+      });
+      // Verification that local credentials were fully cleared
+      await expect(loadStoredCredentials(store)).resolves.toBeNull();
+    });
+
+    it('surfaces 400 invalid token error', async () => {
+      const store = new FakeStore();
+      const { deps } = depsFor(store, [
+        {
+          failure: new ApiError(
+            'http',
+            'This password reset token is invalid.',
+            400,
+          ),
+        },
+      ]);
+
+      const result = await submitPasswordResetFlow(
+        {
+          email: 'test@example.com',
+          token: 'expired-token',
+          password: 'new-password-123',
+          passwordConfirmation: 'new-password-123',
+        },
+        deps,
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.message).toBe(
+          'This password reset token is invalid.',
+        );
+      }
+    });
+
+    it('surfaces validation errors', async () => {
+      const store = new FakeStore();
+      const { deps } = depsFor(store, [
+        {
+          failure: new ApiError('validation', 'Validation error', 422, {
+            password: ['The password must be at least 8 characters.'],
+          }),
+        },
+      ]);
+
+      const result = await submitPasswordResetFlow(
+        {
+          email: 'test@example.com',
+          token: 'token',
+          password: 'short',
+          passwordConfirmation: 'short',
+        },
+        deps,
+      );
+
+      expect(result).toEqual({
+        ok: false,
+        error: {
+          kind: 'validation',
+          message: 'Validation error',
+          fields: {
+            password: ['The password must be at least 8 characters.'],
+          },
+        },
+      });
+    });
+  });
+
+  describe('resendVerificationFlow', () => {
+    it('posts email to /auth/resend-verification and returns message', async () => {
+      const store = new FakeStore();
+      const { deps, calls } = depsFor(store, [
+        {
+          ok: {
+            message:
+              'If an unverified account exists for this email, a verification link has been sent.',
+          },
+        },
+      ]);
+
+      const result = await resendVerificationFlow(
+        'unverified@example.com',
+        deps,
+      );
+
+      expect(result.ok).toBe(true);
+      expect(calls[0]).toMatchObject({
+        method: 'POST',
+        path: '/auth/resend-verification',
+        body: { email: 'unverified@example.com' },
+      });
+    });
+
+    it('surfaces rate limiting on repeat resends', async () => {
+      const store = new FakeStore();
+      const { deps } = depsFor(store, [
+        { failure: new ApiError('rate_limited', 'Too many requests.', 429) },
+      ]);
+
+      const result = await resendVerificationFlow('test@example.com', deps);
+
+      expect(result).toEqual({
+        ok: false,
+        error: {
+          kind: 'rate_limited',
+          message: 'Too many requests.',
+        },
+      });
+    });
+  });
+
   describe('signOut', () => {
     it('revokes on the server and purges local credentials', async () => {
       const store = new FakeStore();
@@ -602,6 +804,151 @@ describe('auth session orchestration (session.ts)', () => {
         '/auth/devices/7/session',
         '/auth/devices',
       ]);
+      await expect(loadStoredCredentials(store)).resolves.toBeNull();
+    });
+
+    it('revoking another device session leaves current session signed in with updated device list', async () => {
+      const store = new FakeStore();
+      await store.seed({
+        'arta.auth.token': 'token-a',
+        'arta.auth.userId': userA.id,
+      });
+      const signedIn: AuthState = {
+        ...initialAuthState,
+        status: 'signed-in',
+        user: userA,
+        sessionVerified: true,
+      };
+      const { deps, calls } = depsFor(store, [
+        { ok: { message: 'Device session revoked.' } },
+        { ok: { data: [deviceRow] } },
+      ]);
+
+      const result = await revokeDevice(signedIn, 8, deps);
+
+      expect(result.ok).toBe(true);
+      expect(result.state.status).toBe('signed-in');
+      expect(result.state.devices).toEqual([deviceRow]);
+      expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+        'DELETE /auth/devices/8/session',
+        'GET /auth/devices',
+      ]);
+      // Current device token remains securely in store
+      await expect(storedToken(store)).resolves.toBe('token-a');
+    });
+
+    it('handles network failure on revoking a device without claiming success', async () => {
+      const store = new FakeStore();
+      await store.seed({
+        'arta.auth.token': 'token-a',
+        'arta.auth.userId': userA.id,
+      });
+      const signedIn: AuthState = {
+        ...initialAuthState,
+        status: 'signed-in',
+        user: userA,
+        sessionVerified: true,
+      };
+      const { deps } = depsFor(store, [{ failure: networkFailure() }]);
+
+      const result = await revokeDevice(signedIn, 8, deps);
+
+      expect(result.ok).toBe(false);
+      expect(result.state.status).toBe('signed-in');
+      expect(result.state.devicesError?.kind).toBe('network');
+      await expect(storedToken(store)).resolves.toBe('token-a');
+    });
+
+    it('handles network failure on renaming a device without claiming success', async () => {
+      const store = new FakeStore();
+      await store.seed({
+        'arta.auth.token': 'token-a',
+        'arta.auth.userId': userA.id,
+      });
+      const signedIn: AuthState = {
+        ...initialAuthState,
+        status: 'signed-in',
+        user: userA,
+        sessionVerified: true,
+      };
+      const { deps } = depsFor(store, [{ failure: networkFailure() }]);
+
+      const result = await renameDevice(signedIn, 7, 'Nama Baru', deps);
+
+      expect(result.ok).toBe(false);
+      expect(result.state.status).toBe('signed-in');
+      expect(result.state.devicesError?.kind).toBe('network');
+      await expect(storedToken(store)).resolves.toBe('token-a');
+    });
+
+    it('handles 404 when attempting to revoke foreign or unknown session safely', async () => {
+      const store = new FakeStore();
+      await store.seed({
+        'arta.auth.token': 'token-a',
+        'arta.auth.userId': userA.id,
+      });
+      const signedIn: AuthState = {
+        ...initialAuthState,
+        status: 'signed-in',
+        user: userA,
+        sessionVerified: true,
+      };
+      const { deps } = depsFor(store, [
+        { failure: new ApiError('not_found', 'Not found.', 404) },
+      ]);
+
+      const result = await revokeDevice(signedIn, 9999, deps);
+
+      expect(result.ok).toBe(false);
+      expect(result.state.status).toBe('signed-in');
+      expect(result.state.devicesError?.kind).toBe('not_found');
+      await expect(storedToken(store)).resolves.toBe('token-a');
+    });
+
+    it('handles 404 when attempting to rename foreign or unknown session safely', async () => {
+      const store = new FakeStore();
+      await store.seed({
+        'arta.auth.token': 'token-a',
+        'arta.auth.userId': userA.id,
+      });
+      const signedIn: AuthState = {
+        ...initialAuthState,
+        status: 'signed-in',
+        user: userA,
+        sessionVerified: true,
+      };
+      const { deps } = depsFor(store, [
+        { failure: new ApiError('not_found', 'Not found.', 404) },
+      ]);
+
+      const result = await renameDevice(signedIn, 9999, 'Hacker', deps);
+
+      expect(result.ok).toBe(false);
+      expect(result.state.status).toBe('signed-in');
+      expect(result.state.devicesError?.kind).toBe('not_found');
+      await expect(storedToken(store)).resolves.toBe('token-a');
+    });
+
+    it('purges credentials and signs out when profile refresh encounters a session revoked from another device (401)', async () => {
+      const store = new FakeStore();
+      await store.seed({
+        'arta.auth.token': 'revoked-remotely',
+        'arta.auth.userId': userA.id,
+      });
+      const signedIn: AuthState = {
+        ...initialAuthState,
+        status: 'signed-in',
+        user: userA,
+        sessionVerified: true,
+      };
+      const { deps } = depsFor(store, [
+        { failure: unauthorized('Unauthenticated.') },
+      ]);
+
+      const next = await refreshProfile(signedIn, deps);
+
+      expect(next.status).toBe('signed-out');
+      expect(next.error?.kind).toBe('session_expired');
       await expect(loadStoredCredentials(store)).resolves.toBeNull();
     });
   });
